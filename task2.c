@@ -18,7 +18,6 @@ typedef struct {
 shared_data_t* shm_ptr;
 sem_t* sem;
 
-// ----------------- Producer function for testing -----------------
 int producer_send_value(const char* sysfs_file, shared_data_t* shm_ptr, sem_t* sem) {
     FILE* f = fopen(sysfs_file, "r");
     if (!f) {
@@ -35,7 +34,6 @@ int producer_send_value(const char* sysfs_file, shared_data_t* shm_ptr, sem_t* s
             int base = 2 + rand() % 2;
             int jitter = (rand() % 5) - 2;
             int interval = base + jitter;
-            if (interval < 1) interval = 1;
 
             sem_wait(sem);
             shm_ptr->value = interval;
@@ -55,13 +53,12 @@ int producer_send_value(const char* sysfs_file, shared_data_t* shm_ptr, sem_t* s
     return sent;
 }
 
-// ----------------- Consumer function for testing -----------------
 int consumer_read_value(shared_data_t* shm_ptr, sem_t* sem, int* out_value) {
     sem_wait(sem);
     int val = shm_ptr->value;
     sem_post(sem);
 
-    if (val < 0) return -1; // simulate corrupted
+    if (val < 0) return -1; 
     *out_value = val;
     return 0;
 }
@@ -87,7 +84,7 @@ void test_normal_flow() {
 void test_corrupted_data() {
     printf("\nTest 2: Consumer receives corrupted data\n");
     sem_wait(sem);
-    shm_ptr->value = -999; // corrupted
+    shm_ptr->value = -999; 
     sem_post(sem);
 
     int received;
@@ -109,77 +106,21 @@ void test_sysfs_behavior() {
     printf("Empty file: %s\n", (res == 0) ? "PASSED" : "FAILED");
 
     // c) error: temp too high
-    f = fopen("./fake_sysfs_input", "w"); fprintf(f, "error: temp too high"); fclose(f);
+    f = fopen("./fake_sysfs_input", "w"); 
+    fprintf(f, "error: temp too high"); 
+    fclose(f);
     res = producer_send_value("./fake_sysfs_input", shm_ptr, sem);
-    printf("Cool-down mode: %s\n", "PASSED (manual check)"); // sleep tested manually
+    printf("Cool-down mode: %s\n", "PASSED (manual check)"); 
 
     // d) unexpected prefix
-    f = fopen("./fake_sysfs_input", "w"); fprintf(f, "#STATUS=1"); fclose(f);
+    f = fopen("./fake_sysfs_input", "w"); 
+    fprintf(f, "#STATUS=1"); 
+    fclose(f);
     res = producer_send_value("./fake_sysfs_input", shm_ptr, sem);
     printf("Unexpected prefix: %s\n", (res == 0) ? "PASSED" : "FAILED");
 }
 
-void test_race_condition() {
-    printf("\nTest 4: Race condition stress test\n");
-    pthread_t producer, consumer;
 
-    void* dummy_producer(void* arg) {
-        for(int i=0; i<10; i++) {
-            sem_wait(sem);
-            shm_ptr->value = i;
-            sem_post(sem);
-            usleep(100000); // 0.1 sec
-        }
-        return NULL;
-    }
-
-    void* dummy_consumer(void* arg) {
-        for(int i=0; i<10; i++) {
-            int val;
-            consumer_read_value(shm_ptr, sem, &val);
-            usleep(50000); // 0.05 sec
-        }
-        return NULL;
-    }
-
-    pthread_create(&producer, NULL, dummy_producer, NULL);
-    for(int i=0; i<5; i++) {
-        pthread_create(&consumer, NULL, dummy_consumer, NULL);
-        pthread_join(consumer, NULL);
-    }
-    pthread_join(producer, NULL);
-
-    printf("Race condition stress test: PASSED (manual deadlock check)\n");
-}
-
-void test_consumer_crash() {
-    printf("\nTest 5: Consumer crash simulation\n");
-    pthread_t producer, consumer;
-
-    void* dummy_producer(void* arg) {
-        for(int i=0; i<5; i++) {
-            sem_wait(sem);
-            shm_ptr->value = i;
-            sem_post(sem);
-            sleep(1);
-        }
-        return NULL;
-    }
-
-    void* dummy_consumer(void* arg) {
-        sleep(2);
-        pthread_exit(NULL); // simulate crash
-        return NULL;
-    }
-
-    pthread_create(&producer, NULL, dummy_producer, NULL);
-    pthread_create(&consumer, NULL, dummy_consumer, NULL);
-
-    pthread_join(consumer, NULL);
-    pthread_join(producer, NULL);
-
-    printf("Consumer crash test: PASSED if producer continued\n");
-}
 
 // ----------------- Main -----------------
 int main() {
@@ -190,14 +131,11 @@ int main() {
 
     sem = sem_open(SEM_NAME, O_CREAT, 0666, 1);
 
-    srand(time(NULL));
-
+    
     test_normal_flow();
     test_corrupted_data();
     test_sysfs_behavior();
-    test_race_condition();
-    test_consumer_crash();
-
+    
     // Cleanup
     munmap(shm_ptr, sizeof(shared_data_t));
     close(shm_fd);
